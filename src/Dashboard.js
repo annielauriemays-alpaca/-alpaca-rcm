@@ -56,11 +56,77 @@ const PRIORITY_ACTIONS = [
   { priority: 6, horizon: "Days 30–60", action: "Resolve ERA enrollment gaps in Candid for BCBS TX", impact: "$1,080 delayed", urgency: "info", type: "Configure Candid" },
 ];
 
+const PLATFORM_AGNOSTIC = [
+  {
+    category: "Pre-submission claim QA",
+    candid: "Configure modifier rules, credentialing gate, eligibility hard gate, ERA enforcement in Candid's rules engine",
+    agnostic: "Any billing platform with a rules engine (Waystar, Availity, Change Healthcare, or custom) can enforce pre-submission rules. If your platform lacks a rules engine, implement as a manual QA checklist enforced before claim export.",
+    vendors: ["Waystar", "Availity", "Change Healthcare", "Zelis"],
+    build_option: "Build a lightweight pre-submission validation layer via API that checks modifier rules, auth presence, and eligibility before claims are transmitted to the clearinghouse.",
+    priority: "Critical",
+    color: "#A32D2D",
+  },
+  {
+    category: "Provider roster & credentialing gate",
+    candid: "Keep provider roster current in Candid. Configure claim block for uncredentialed NPI + payer combinations.",
+    agnostic: "Maintain a credentialing status table (NPI × payer × status) in any system — even a well-maintained spreadsheet or Airtable database. The gate logic is simple: if status ≠ Active, block claim generation. Platform-independent.",
+    vendors: ["VerityStream", "Medallion", "Modio Health", "Airtable (lightweight)"],
+    build_option: "Build a credentialing status API endpoint that claim generation calls before creating a claim. Returns block or pass based on NPI + payer combination.",
+    priority: "Critical",
+    color: "#A32D2D",
+  },
+  {
+    category: "Eligibility verification",
+    candid: "Configure Candid eligibility check as hard gate. Supplement with Sohar for deep Medicaid managed care verification.",
+    agnostic: "Eligibility verification is platform-independent — it connects directly to payer systems via 270/271 transactions. Any clearinghouse or dedicated RTE vendor provides this regardless of your billing platform.",
+    vendors: ["Sohar Health ($0.20–$0.40/check)", "Availity (free portal)", "Change Healthcare", "Waystar"],
+    build_option: "Connect directly to payer APIs or a clearinghouse for real-time 270/271 eligibility transactions. Enforce as a hard gate in your scheduling or intake workflow.",
+    priority: "Critical",
+    color: "#A32D2D",
+  },
+  {
+    category: "ERA enrollment & payment posting",
+    candid: "Audit all payers in Candid for ERA enrollment completeness. Configure submission block for payers without active ERA.",
+    agnostic: "ERA enrollment is a clearinghouse function, not a billing platform function. Enroll through your clearinghouse (Availity, Change Healthcare, Waystar) for each payer. The onboarding checklist is the same regardless of platform.",
+    vendors: ["Availity", "Change Healthcare", "Waystar", "Office Ally"],
+    build_option: "Maintain an ERA enrollment status table per payer. Build a pre-submission check that queries this table and blocks claims for payers without confirmed ERA enrollment.",
+    priority: "High",
+    color: "#BA7517",
+  },
+  {
+    category: "Denial pattern detection & routing",
+    candid: "Configure Candid workflow rules to route denial-tagged claims to correct owner queues. High-value denials flagged for same-day action.",
+    agnostic: "Denial pattern detection is a data problem, not a platform problem. Any system that stores claim data can run this logic. A nightly query against your claims database — when 3+ claims from the same NPI + payer deny with the same code in 30 days, fire an alert — can be built in any environment.",
+    vendors: ["Brightree", "Waystar", "custom BI tool", "Google Sheets + Apps Script"],
+    build_option: "Build a scheduled job that queries your claims data nightly. When threshold is hit, send alert via email or Slack with NPI, payer, denial code, claim count, and dollars at risk. High-value threshold: flag any single denial over $500 for same-day review.",
+    priority: "High",
+    color: "#BA7517",
+  },
+  {
+    category: "Authorization management",
+    candid: "Candid does not manage prior auth — this gap exists regardless of platform. Silna handles PA processing.",
+    agnostic: "Prior authorization management is universally a gap in RCM billing platforms. Regardless of platform, you need: (1) a PA vendor (Silna or comparable), (2) an internal auth tracker, and (3) a scheduling gate that enforces auth before session confirmation. None of these require Candid.",
+    vendors: ["Silna (current)", "Infinx", "Olive AI", "Waystar Auth"],
+    build_option: "Build or implement a lightweight auth tracker (Notion, Airtable, or custom) that connects to your scheduling system. Scheduling gate is an EHR-level configuration regardless of billing platform.",
+    priority: "Critical",
+    color: "#A32D2D",
+  },
+  {
+    category: "Reporting & KPI dashboards",
+    candid: "Activate and configure Candid's out-of-the-box reporting for clean claim rate, denial rate by payer, and days to payment.",
+    agnostic: "If not using Candid, build reporting on top of your claims data directly. Clean claim rate, denial rate by payer, days to payment, and provider-level denial rate can all be calculated from raw claims data in any BI tool.",
+    vendors: ["Looker", "Tableau", "Power BI", "Google Looker Studio (free)", "Metabase"],
+    build_option: "Connect your claims database to a BI tool. Build the eight KPI views defined in the analysis doc. Most can be built in a day with clean data access.",
+    priority: "High",
+    color: "#BA7517",
+  },
+];
+
 const fmt = n => "$" + n.toLocaleString();
 
 export default function Dashboard() {
   const [tab, setTab] = useState("overview");
-  const tabs = ["overview", "rcm stage", "by payer", "denial breakdown", "90-day plan"];
+  const tabs = ["overview", "rcm stage", "by payer", "denial breakdown", "90-day plan", "platform-agnostic"];
   const totalAtRisk = DENIAL_CATEGORIES.reduce((s, d) => s + d.at_risk, 0);
   const totalDenied = DENIAL_CATEGORIES.reduce((s, d) => s + d.count, 0);
 
@@ -227,6 +293,48 @@ export default function Dashboard() {
               </div>
             );
           })}
+        </div>
+      )}
+      {tab === "platform-agnostic" && (
+        <div>
+          <div style={{ background: '#185FA510', border: '0.5px solid #185FA530', borderRadius: 8, padding: '12px 16px', marginBottom: '1.25rem', fontSize: 13, color: '#185FA5', lineHeight: 1.7 }}>
+            This analysis assumes Alpaca uses Candid Health as its primary RCM platform. If that assumption is incorrect — or if Candid is configured differently than expected — this tab reframes every recommendation in platform-neutral terms. The fixes are the same. The implementation path changes.
+          </div>
+
+          <div style={{ background: 'var(--color-background-secondary)', borderRadius: 8, padding: '12px 16px', marginBottom: '1.5rem', fontSize: 13, lineHeight: 1.7 }}>
+            <span style={{ fontWeight: 500 }}>The underlying principle doesn't change:</span> pre-submission QA, credentialing gates, eligibility verification, ERA enrollment, denial routing, and auth management are all platform-independent problems. Every fix recommended in this analysis can be implemented regardless of which billing platform is in use — the tool changes, the logic doesn't.
+          </div>
+
+          {PLATFORM_AGNOSTIC.map((item, i) => (
+            <div key={i} style={{ border: '0.5px solid var(--color-border-tertiary)', borderRadius: 10, marginBottom: 12, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--color-background-secondary)', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 500 }}>{item.category}</span>
+                <span style={{ fontSize: 11, background: item.color + '20', color: item.color, padding: '2px 8px', borderRadius: 4 }}>{item.priority}</span>
+              </div>
+              <div style={{ padding: '14px 16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div style={{ background: '#185FA508', border: '0.5px solid #185FA520', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, color: '#185FA5', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>If using Candid</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>{item.candid}</div>
+                  </div>
+                  <div style={{ background: '#3B6D1108', border: '0.5px solid #3B6D1120', borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 11, color: '#3B6D11', fontWeight: 500, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Platform-agnostic fix</div>
+                    <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>{item.agnostic}</div>
+                  </div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginBottom: 4 }}>If building custom or replacing platform</div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-primary)', lineHeight: 1.6 }}>{item.build_option}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>Vendor options:</span>
+                  {item.vendors.map((v, j) => (
+                    <span key={j} style={{ fontSize: 11, background: 'var(--color-background-secondary)', color: 'var(--color-text-secondary)', padding: '2px 8px', borderRadius: 4 }}>{v}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
