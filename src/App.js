@@ -5,7 +5,13 @@ import Roster from './Roster';
 import PayerKB from './PayerKB';
 import Prompts from './Prompts';
 
-const navLinks = ['Revenue Health', 'RCM Operating System', 'Provider Roster', 'Payer Rules KB', 'Prompt Library'];
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'Revenue Health' },
+  { id: 'rcm-os', label: 'RCM Operating System' },
+  { id: 'roster', label: 'Provider Roster' },
+  { id: 'kb', label: 'Payer Rules KB' },
+  { id: 'prompts', label: 'Prompt Library' },
+];
 
 export default function App() {
   const [page, setPage] = useState('dashboard');
